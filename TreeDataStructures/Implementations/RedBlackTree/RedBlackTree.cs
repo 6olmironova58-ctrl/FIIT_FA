@@ -19,6 +19,7 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
         }
 
         RbFixInsert(newNode);
+        Root!.Color = RbColor.Black;
     }
     
     protected override void OnNodeRemoved(RbNode<TKey, TValue>? parent, RbNode<TKey, TValue>? child)
@@ -122,6 +123,7 @@ public class RedBlackTree<TKey, TValue> : BinarySearchTreeBase<TKey, TValue, RbN
             SetColor(parent, RbColor.Black);
             SetColor(grandparent, RbColor.Red);
         }
+        Root!.Color = RbColor.Black;
     }
 
     private void RbFixRemove(RbNode<TKey, TValue>? node, RbNode<TKey, TValue>? parent)
