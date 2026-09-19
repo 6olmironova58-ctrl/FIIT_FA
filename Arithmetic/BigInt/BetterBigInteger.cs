@@ -9,12 +9,11 @@ public sealed class BetterBigInteger : IBigInteger
 {
     private int _signBit;
     
-    private uint _smallValue; // Если число маленькое, храним его прямо в этом поле, а _data == null.
+    private uint _smallValue;
     private uint[]? _data;
     
     public bool IsNegative => _signBit == 1;
     
-    /// От массива цифр (little endian)
     public BetterBigInteger(uint[] digits, bool isNegative = false)
     {
         ArgumentNullException.ThrowIfNull(digits);
@@ -121,15 +120,12 @@ public sealed class BetterBigInteger : IBigInteger
             uint lo = val & 0xFFFF;
             uint hi = val >> 16;
 
-            // Умножаем половины
             uint prodLo = lo * scalar;
             uint prodHi = hi * scalar;
 
-            // Добавляем перенос к младшей части
             uint sumLo = prodLo + carry;
             uint carryLo = sumLo < prodLo ? 1u : 0u;
 
-            // Формируем результат
             uint resLo = sumLo & 0xFFFF;
             uint resHi = (prodLo >> 16) + prodHi + carryLo;
 
@@ -245,23 +241,16 @@ public sealed class BetterBigInteger : IBigInteger
 
         for (int i = shift; i >= 0; i--)
         {
-            // Эмуляция: var shifted = bAbs << i;
-            // Чтобы не создавать объекты, мы можем сравнить, но для простоты и сохранения 
-            // логики одногруппника, мы используем оператор <<, который мы реализуем на Этапе 6.
-            // Если << еще не готов, можно использовать временный BetterBigInteger.
             var shifted = new BetterBigInteger(bDigits, false) << i;
             
             if (MagnitudeArithmetic.CompareMagnitudes(remDigits, shifted.GetDigits()) < 0)
                 continue;
 
-            // remainder = remainder - shifted
             remDigits = MagnitudeArithmetic.SubtractMagnitudes(remDigits, shifted.GetDigits());
             
             quoDigits[i / 32] |= (1u << (i % 32));
         }
 
-        // 4. Определение знаков результата
-        // Остаток отрицателен, если a отрицательно и остаток не равен нулю
         bool remIsNeg = a.IsNegative && !IsZero(remDigits);
         bool quoIsNeg = (a.IsNegative ^ b.IsNegative) && !IsZero(quoDigits);
 
@@ -302,19 +291,16 @@ public sealed class BetterBigInteger : IBigInteger
 
         IMultiplier strategy = maxLen switch
         {
-            <= 64 => _simple,      // Школьное умножение для малых чисел
-            <= 10000 => _karatsuba, // Карацуба для средних чисел
-            _ => _fft              // FFT для очень больших чисел
+            <= 64 => _simple,
+            <= 10000 => _karatsuba,
+            _ => _fft
         };
 
-        // strategy.Multiply работает с BetterBigInteger и возвращает результат
-        // без учёта знака — поэтому передаём модули (положительные значения)
-        // и применяем знак сами.
         BetterBigInteger aAbs = a.IsNegative ? -a : a;
         BetterBigInteger bAbs = b.IsNegative ? -b : b;
 
         BetterBigInteger product = strategy.Multiply(aAbs, bAbs);
-        bool isNegative = a.IsNegative ^ b.IsNegative; // XOR знаков
+        bool isNegative = a.IsNegative ^ b.IsNegative;
 
         return new BetterBigInteger(product.GetDigits().ToArray(), isNegative);
     }
