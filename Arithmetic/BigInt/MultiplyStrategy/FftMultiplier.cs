@@ -5,7 +5,7 @@ namespace Arithmetic.BigInt.MultiplyStrategy;
 
 internal class FftMultiplier : IMultiplier
 {
-    private const int RecursionThreshold = 64;
+    private const int RecursionThreshold = (sizeof(uint) * 8) * 2;
 
     public BetterBigInteger Multiply(BetterBigInteger a, BetterBigInteger b)
     {
@@ -18,7 +18,7 @@ internal class FftMultiplier : IMultiplier
         if (IsZeroSpan(aDigits) || IsZeroSpan(bDigits))
             return new BetterBigInteger([0]);
 
-        var totalBits = (aDigits.Length + bDigits.Length) * 32;
+        var totalBits = (aDigits.Length + bDigits.Length) * (sizeof(uint) * 8);
         var rnd2N = NextPowerOfTwo(totalBits);
 
         var result = SchonhageStrassen(a, b, rnd2N);
@@ -103,11 +103,12 @@ internal class FftMultiplier : IMultiplier
         }
     }
 
-    private static void DivideByN(BetterBigInteger[] a)
+    private void DivideByN(BetterBigInteger[] a, int K)
     {
-        var logN = Log2(a.Length);
+        var L = Log2(a.Length);
+        var shift = K - L;
         for (var i = 0; i < a.Length; i++)
-            a[i] >>= logN;
+            a[i] = ModNeg(ModShift(a[i], shift, K), K);
     }
 
     internal void Ntt(BetterBigInteger[] a, int K, bool invert)
@@ -115,7 +116,7 @@ internal class FftMultiplier : IMultiplier
         BitReversalPermutation(a);
         ButterflyPass(a, K, invert);
         if (invert)
-            DivideByN(a);
+            DivideByN(a, K);
     }
 
     internal BetterBigInteger ModShift(BetterBigInteger val, int k, int K)

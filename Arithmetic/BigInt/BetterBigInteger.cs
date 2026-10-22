@@ -118,7 +118,7 @@ public sealed class BetterBigInteger : IBigInteger
         {
             uint val = data[i];
             uint lo = val & 0xFFFF;
-            uint hi = val >> 16;
+            uint hi = val >> (sizeof(uint) * 4);
 
             uint prodLo = lo * scalar;
             uint prodHi = hi * scalar;
@@ -127,10 +127,10 @@ public sealed class BetterBigInteger : IBigInteger
             uint carryLo = sumLo < prodLo ? 1u : 0u;
 
             uint resLo = sumLo & 0xFFFF;
-            uint resHi = (prodLo >> 16) + prodHi + carryLo;
+            uint resHi = (prodLo >> (sizeof(uint) * 4)) + prodHi + carryLo;
 
-            data[i] = (resHi << 16) | resLo;
-            carry = resHi >> 16;
+            data[i] = (resHi << (sizeof(uint) * 4)) | resLo;
+            carry = resHi >> (sizeof(uint) * 4);
         }
         
         while (carry > 0)
@@ -219,7 +219,7 @@ public sealed class BetterBigInteger : IBigInteger
         var digits = GetDigits();
         if (digits is [0]) return 0;
 
-        return 32 * digits.Length - BitOperations.LeadingZeroCount(digits[^1]);
+        return (sizeof(uint) * 8) * digits.Length - BitOperations.LeadingZeroCount(digits[^1]);
     }
 
     private static (BetterBigInteger quotient, BetterBigInteger remainder) DivRem(BetterBigInteger a, BetterBigInteger b) {
@@ -248,7 +248,7 @@ public sealed class BetterBigInteger : IBigInteger
 
             remDigits = MagnitudeArithmetic.SubtractMagnitudes(remDigits, shifted.GetDigits());
             
-            quoDigits[i / 32] |= (1u << (i % 32));
+            quoDigits[i / (sizeof(uint) * 8)] |= (1u << (i % (sizeof(uint) * 8)));
         }
 
         bool remIsNeg = a.IsNegative && !IsZero(remDigits);
@@ -396,8 +396,8 @@ public sealed class BetterBigInteger : IBigInteger
 
     private static uint[] ShiftLeftMagnitude(ReadOnlySpan<uint> digits, int shift)
     {
-        int wordShift = shift / 32;
-        int bitShift = shift % 32;
+        int wordShift = shift / (sizeof(uint) * 8);
+        int bitShift = shift % (sizeof(uint) * 8);
         int newLen = digits.Length + wordShift + (bitShift > 0 ? 1 : 0);
         uint[] res = new uint[newLen];
         
@@ -406,7 +406,7 @@ public sealed class BetterBigInteger : IBigInteger
             res[i + wordShift] |= digits[i] << bitShift;
             if (bitShift > 0 && i + wordShift + 1 < newLen)
             {
-                res[i + wordShift + 1] |= digits[i] >> (32 - bitShift);
+                res[i + wordShift + 1] |= digits[i] >> ((sizeof(uint) * 8) - bitShift);
             }
         }
         return MagnitudeArithmetic.TrimMagnitude(res);
@@ -414,8 +414,8 @@ public sealed class BetterBigInteger : IBigInteger
 
     private static uint[] ShiftRightTwosComplement(uint[] twos, int shift) 
     {
-        int wordShift = shift / 32;
-        int bitShift = shift % 32;
+        int wordShift = shift / (sizeof(uint) * 8);
+        int bitShift = shift % (sizeof(uint) * 8);
         int len = twos.Length;
         uint[] res = new uint[len];
         
@@ -433,7 +433,7 @@ public sealed class BetterBigInteger : IBigInteger
             }
             else
             {
-                res[i] = (low >> bitShift) | (high << (32 - bitShift));
+                res[i] = (low >> bitShift) | (high << ((sizeof(uint) * 8) - bitShift));
             }
         }
         return res;
@@ -486,18 +486,18 @@ public sealed class BetterBigInteger : IBigInteger
         for (int i = len - 1; i >= 0; i--)
         {
             uint lo = dividend[i] & 0xFFFF;
-            uint hi = dividend[i] >> 16;
+            uint hi = dividend[i] >> (sizeof(uint) * 4);
             
-            // rem < divisor, поэтому (rem << 16) не переполнит uint
-            uint hiVal = (rem << 16) | hi;
+            // rem < divisor, поэтому (rem << (sizeof(uint) * 4)) не переполнит uint
+            uint hiVal = (rem << (sizeof(uint) * 4)) | hi;
             uint q1 = hiVal / divisor;
             uint r1 = hiVal % divisor;
             
-            uint loVal = (r1 << 16) | lo;
+            uint loVal = (r1 << (sizeof(uint) * 4)) | lo;
             uint q0 = loVal / divisor;
             rem = loVal % divisor;
             
-            quotient[i] = (q1 << 16) | q0;
+            quotient[i] = (q1 << (sizeof(uint) * 4)) | q0;
         }
         return (MagnitudeArithmetic.TrimMagnitude(quotient), rem);
     } 
@@ -507,25 +507,31 @@ internal static class MagnitudeArithmetic
 {
     public static uint[] AddMagnitudes(ReadOnlySpan<uint> a, ReadOnlySpan<uint> b)
     {
-        var result = new uint[Math.Max(a.Length, b.Length) + 1];
+        var n = Math.Max(a.Length, b.Length);
+        var result = new uint[n + 1];
         uint carry = 0;
 
-        for (var i = 0; i < result.Length - 1; i++)
+        for (var i = 0; i < n; i++)
         {
             var aVal = i < a.Length ? a[i] : 0u;
             var bVal = i < b.Length ? b[i] : 0u;
 
-            var s0 = aVal + bVal;
-            var c0 = s0 < aVal ? 1u : 0u;
+            var aLo = aVal & 0xFFFFu;
+            var bLo = bVal & 0xFFFFu;
+            var sLo = aLo + bLo + carry;
+            var rLo = sLo & 0xFFFFu;
+            carry = sLo >> (sizeof(uint) * 4);
 
-            var s1 = s0 + carry;
-            var c1 = s1 < s0 ? 1u : 0u;
+            var aHi = aVal >> (sizeof(uint) * 4);
+            var bHi = bVal >> (sizeof(uint) * 4);
+            var sHi = aHi + bHi + carry;
+            var rHi = sHi & 0xFFFFu;
+            carry = sHi >> (sizeof(uint) * 4);
 
-            result[i] = s1;
-            carry = c0 + c1;
+            result[i] = rLo | (rHi << (sizeof(uint) * 4));
         }
 
-        result[^1] = carry;
+        result[n] = carry;
         return TrimMagnitude(result);
     }
 
